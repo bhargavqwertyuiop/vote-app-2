@@ -1,0 +1,61 @@
+# Docker
+# Build a Docker image
+# https://docs.microsoft.com/azure/devops/pipelines/languages/docker
+
+trigger:
+  paths:
+   include:
+     - worker/**
+
+resources:
+- repo: self
+
+variables:
+  tag: '$(Build.BuildId)'
+
+stages:
+- stage: Build
+  displayName: Build image
+  jobs:
+  - job: Build
+    displayName: Build
+    pool:
+      vmImage: ubuntu-latest
+    steps:
+    - task: Docker@2
+      displayName: Build an image
+      inputs:
+        containerRegistry: 'connectiondocker'
+        repository: 'bhargavqwertyuiop/worker-app'
+        command: 'buildAndPush'
+        Dockerfile: '**/worker/Dockerfile'
+        tags: '$(tag)'
+      
+    - script: |
+        echo "Updating image tag in deployment.yml..."
+        sed -i 's|image: .*|image: bhargavqwertyuiop/worker-app:$(Build.BuildId)|' k8s-specifications/worker-deployment.yaml
+
+        echo "Configuring Git user..."
+        git config --global user.name '$(GIT_USER)'
+        git config --global user.email '$(GIT_EMAIL)'
+
+        echo "Pulling latest changes..."
+        git pull https://${GIT_USER}:${GIT_TOKEN}@github.com/${GIT_USER}/vote-app.git HEAD:main
+
+        echo "Adding updated files..."
+        git add .
+
+        echo "Committing changes..."
+        git commit -m "Update image tag to $(Build.BuildId)"
+
+        echo "Pushing changes..."
+        git push https://${GIT_USER}:${GIT_TOKEN}@github.com/${GIT_USER}/vote-app.git HEAD:main
+      displayName: 'Update Kubernetes Deployment'
+      env:
+        GIT_TOKEN: $(GIT_TOKEN)
+        GIT_USER: $(GIT_USER)
+        GIT_EMAIL: $(GIT_EMAIL)
+
+      
+            
+        
